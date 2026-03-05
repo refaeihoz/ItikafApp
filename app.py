@@ -131,7 +131,10 @@ st.markdown("""
 # ==========================================
 # 🔗 الاتصال بقاعدة بيانات Google Sheets
 # ==========================================
-scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
 try:
     try:
