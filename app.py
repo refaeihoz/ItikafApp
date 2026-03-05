@@ -324,10 +324,29 @@ with tab3:
                 with col2:
                     st.write("")
                     st.write("")
+                    # === كود الحذف الجديد المربوط بجوجل شيت ===
                     if st.button("🗑️", key=f"del_exp_{exp[0]}", help="حذف", type="secondary"):
+                        # 1. الحذف من جوجل شيت أولاً
+                        if gsheet_doc:
+                            try:
+                                expense_sheet = gsheet_doc.worksheet("Expenses")
+                                records = expense_sheet.get_all_values()
+                                for i, row in enumerate(records):
+                                    try:
+                                        # مطابقة البند والمبلغ والتاريخ
+                                        if len(row) >= 3 and row[1] == str(exp[2]) and float(row[2]) == float(exp[3]) and row[0] == str(exp[1]):
+                                            expense_sheet.delete_rows(i + 1)
+                                            break
+                                    except ValueError:
+                                        continue
+                            except Exception as e:
+                                st.warning(f"تعذر الحذف من الشيت: {e}")
+
+                        # 2. الحذف من القاعدة المحلية
                         c.execute("DELETE FROM expenses WHERE id=?", (exp[0],))
                         conn.commit()
                         st.rerun()
+                    # ==========================================
     else:
         st.info("لا توجد مصروفات مسجلة حتى الآن.")
 
