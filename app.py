@@ -192,17 +192,11 @@ with tab1:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📊 تحليل المصروفات")
     
-    # تجميع بيانات المصروفات للرسم البياني
-    cat_totals = {}
-    for exp in expenses:
-        cat = exp.get('category', 'غير محدد')
-        amt = safe_float(exp.get('amount', 0))
-        cat_totals[cat] = cat_totals.get(cat, 0) + amt
-        
-    chart_data = [(cat, amt) for cat, amt in cat_totals.items() if amt > 0]
+    c.execute("SELECT category, SUM(amount) FROM expenses GROUP BY category")
+    chart_data = c.fetchall()
     
     if chart_data:
-        max_amount = max([amt for cat, amt in chart_data])
+        max_amount = max([row[1] for row in chart_data])
         for category, amount in chart_data:
             percentage = (amount / max_amount) * 100 if max_amount > 0 else 0
             st.markdown(f"""
