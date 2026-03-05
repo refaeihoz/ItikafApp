@@ -192,7 +192,6 @@ with tab1:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📊 تحليل المصروفات")
     
-    # تجميع بيانات المصروفات للرسم البياني
     cat_totals = {}
     for exp in expenses:
         cat = exp.get('category', 'غير محدد')
@@ -206,12 +205,12 @@ with tab1:
         for category, amount in chart_data:
             percentage = (amount / max_amount) * 100 if max_amount > 0 else 0
             st.markdown(f"""
-            <div style="margin-bottom: 20px; direction: rtl; background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); border: 1px solid #eee;">
+            <div style="margin-bottom: 20px; direction: rtl; background: {card_bg}; padding: 15px; border-radius: 12px; border: 1px solid {border_col};">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 1.1rem;">
-                    <span style="font-weight: 700; color: #34495E;">{category}</span>
-                    <span style="color: #1E88E5; font-weight: 800;">{amount:.2f} ₺</span>
+                    <span style="font-weight: 700; color: {text_color};">{category}</span>
+                    <span style="color: {highlight}; font-weight: 800;">{amount:.2f} ₺</span>
                 </div>
-                <div style="background-color: #EDF2F7; border-radius: 10px; width: 100%; height: 10px; overflow: hidden;">
+                <div style="background-color: {'#333' if is_dark_final else '#EDF2F7'}; border-radius: 10px; width: 100%; height: 10px; overflow: hidden;">
                     <div style="background: linear-gradient(90deg, #1E88E5, #42A5F5); width: {percentage}%; height: 100%; border-radius: 10px; transition: width 0.8s ease-in-out;"></div>
                 </div>
             </div>
@@ -233,7 +232,7 @@ with tab2:
         i_date = st.date_input("التاريخ", date.today())
         i_name = st.text_input("اسم المعتكف / المتبرع", placeholder="اكتب الاسم هنا...")
         i_type = st.selectbox("نوع الدفع", ["اشتراك اعتكاف", "تبرع عام", "كفالة معتكف"])
-        i_amount = st.number_input("المبلغ", min_value=0.0, step=50.0, format="%.2f", value=None, placeholder="اكتب المبلغ...")
+        i_amount = st.number_input("المبلغ", min_value=0.0, step=50.0, format="%.2f", value=None)
         i_notes = st.text_input("ملاحظات", placeholder="أي تفاصيل إضافية (اختياري)...")
         
         st.write("") 
@@ -244,37 +243,32 @@ with tab2:
             elif i_amount is None or i_amount <= 0:
                 st.error("⚠️ يرجى إدخال مبلغ صحيح أكبر من الصفر!")
             else:
-                # توليد ID جديد
-                new_id = max([int(r.get('id', 0)) for r in incomes] + [0]) + 1
-                # ترتيب الأعمدة: id, name, type, amount, notes, date
-                income_sheet.append_row([new_id, i_name, i_type, float(i_amount), i_notes, str(i_date)])
-                st.success("🎉 تم الحفظ في جوجل شيت بنجاح!")
+                # الحفظ بدون ID (الترتيب: name, type, amount, notes, date)
+                income_sheet.append_row([i_name, i_type, float(i_amount), i_notes, str(i_date)])
+                st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
             
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📋 سجل الإيرادات")
     
     if incomes:
-        # عرض الأحدث أولاً
-        for inc in reversed(incomes):
+        # استخدام enumerate لحفظ رقم الصف الأصلي للحذف (الصف في الشيت = index + 2)
+        for i, inc in reversed(list(enumerate(incomes))):
             inc_date = inc.get('date', '-')
             with st.container(border=True):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>👤 {inc.get('name','')}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: {text_color};'>👤 {inc.get('name','')}</span>", unsafe_allow_html=True)
                     st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>{inc.get('type','')} • 📅 {inc_date}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #1E88E5; font-size: 1.4em; font-weight: 800;'>{safe_float(inc.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: {highlight}; font-size: 1.4em; font-weight: 800;'>{safe_float(inc.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
                     if inc.get('notes'):
                         st.caption(f"📝 {inc['notes']}")
                 with col2:
                     st.write("")
                     st.write("")
-                    if st.button("🗑️", key=f"del_inc_{inc.get('id')}", help="حذف", type="secondary"):
-                        # البحث عن رقم الصف وحذفه (+2 لأن الصف 1 هو العناوين و+1 للـ index)
-                        for i, r in enumerate(income_sheet.get_all_records()):
-                            if str(r.get('id')) == str(inc.get('id')):
-                                income_sheet.delete_rows(i + 2)
-                                break
+                    # زرار الحذف بيعتمد على رقم الـ index
+                    if st.button("🗑️", key=f"del_inc_{i}", help="حذف", type="secondary"):
+                        income_sheet.delete_rows(i + 2)
                         st.rerun()
     else:
         st.info("لا توجد إيرادات مسجلة حتى الآن.")
@@ -292,7 +286,7 @@ with tab3:
         
         e_date = st.date_input("التاريخ", date.today())
         e_category = st.selectbox("بند الصرف", ["سحور", "إفطار", "مشروبات وضيافة", "أدوات نظافة", "طوارئ ونثريات"])
-        e_amount = st.number_input("المبلغ", min_value=0.0, step=50.0, format="%.2f", value=None, placeholder="اكتب المبلغ...")
+        e_amount = st.number_input("المبلغ", min_value=0.0, step=50.0, format="%.2f", value=None)
         e_buyer = st.text_input("المسؤول عن الشراء", placeholder="مين اللي اشترى؟")
         e_notes = st.text_input("ملاحظات وتفاصيل", placeholder="مثال: عيش وفول من مطعم كذا...")
         
@@ -304,33 +298,29 @@ with tab3:
             elif not e_buyer or e_buyer.strip() == "":
                 st.error("⚠️ يرجى إدخال اسم المسؤول عن الشراء!")
             else:
-                new_id = max([int(r.get('id', 0)) for r in expenses] + [0]) + 1
-                # ترتيب الأعمدة: id, date, category, amount, buyer, notes
-                expenses_sheet.append_row([new_id, str(e_date), e_category, float(e_amount), e_buyer, e_notes])
-                st.success("🎉 تم الحفظ في جوجل شيت بنجاح!")
+                # الحفظ بدون ID (الترتيب: date, category, amount, buyer, notes)
+                expenses_sheet.append_row([str(e_date), e_category, float(e_amount), e_buyer, e_notes])
+                st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📋 سجل المصروفات")
     
     if expenses:
-        for exp in reversed(expenses):
+        for i, exp in reversed(list(enumerate(expenses))):
             with st.container(border=True):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>🏷️ {exp.get('category','')}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: {text_color};'>🏷️ {exp.get('category','')}</span>", unsafe_allow_html=True)
                     st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>📅 {exp.get('date','')} • 👤 {exp.get('buyer','')}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #E53935; font-size: 1.4em; font-weight: 800;'>{safe_float(exp.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: {danger}; font-size: 1.4em; font-weight: 800;'>{safe_float(exp.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
                     if exp.get('notes'):
                         st.caption(f"📝 {exp['notes']}")
                 with col2:
                     st.write("")
                     st.write("")
-                    if st.button("🗑️", key=f"del_exp_{exp.get('id')}", help="حذف", type="secondary"):
-                        for i, r in enumerate(expenses_sheet.get_all_records()):
-                            if str(r.get('id')) == str(exp.get('id')):
-                                expenses_sheet.delete_rows(i + 2)
-                                break
+                    if st.button("🗑️", key=f"del_exp_{i}", help="حذف", type="secondary"):
+                        expenses_sheet.delete_rows(i + 2)
                         st.rerun()
     else:
         st.info("لا توجد مصروفات مسجلة حتى الآن.")
