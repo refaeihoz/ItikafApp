@@ -5,126 +5,52 @@ import json
 from datetime import date
 import streamlit.components.v1 as components
 
-# إعداد صفحة البرنامج (يجب أن يكون أول سطر)
+# إعداد صفحة البرنامج
 st.set_page_config(page_title="حسابات الاعتكاف", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 🎨 كود CSS السحري للـ UI/UX الفخم 
+# 🟢 نظام التحكم في المظهر (فاتح - داكن - تلقائي)
 # ==========================================
-st.markdown("""
+if "appearance_mode" not in st.session_state:
+    st.session_state.appearance_mode = "تلقائي 🖥️"
+
+with st.sidebar:
+    st.title("إعدادات البرنامج")
+    st.session_state.appearance_mode = st.selectbox("مظهر التطبيق", ["فاتح ☀️", "داكن 🌙", "تلقائي 🖥️"], index=["فاتح ☀️", "داكن 🌙", "تلقائي 🖥️"].index(st.session_state.appearance_mode))
+
+is_dark_final = False
+if st.session_state.appearance_mode == "داكن 🌙":
+    is_dark_final = True
+elif st.session_state.appearance_mode == "تلقائي 🖥️":
+    components.html("<script>window.parent.postMessage({type: 'theme', theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'}, '*');</script>", height=0)
+
+bg_color = "#121212" if is_dark_final else "#F4F7F6"
+text_color = "#E0E0E0" if is_dark_final else "#2C3E50"
+card_bg = "#1E1E1E" if is_dark_final else "#ffffff"
+border_col = "#333333" if is_dark_final else "#F0F0F0"
+highlight = "#64B5F6" if is_dark_final else "#1E88E5"
+danger = "#EF5350" if is_dark_final else "#D32F2F"
+
+# ==========================================
+# 🎨 كود CSS السحري للـ UI/UX
+# ==========================================
+st.markdown(f"""
     <style>
-    /* استيراد خط "القاهرة" الفخم من جوجل */
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-
-    /* تطبيق الخط والاتجاه على كل البرنامج وفرض لون الخلفية */
-    .stApp {
-        font-family: 'Cairo', sans-serif !important;
-        direction: rtl;
-        background-color: #F4F7F6 !important;
-    }
-    
-    /* 🚨 إجبار كل النصوص على اللون الغامق */
-    p, h1, h2, h3, h4, h5, h6, label, div[data-testid="stMarkdownContainer"] {
-        color: #2C3E50 !important;
-        text-align: right !important;
-    }
-
-    /* إجبار مربعات الإدخال إن الكلام جواها يكون غامق ومقروء */
-    input, .stSelectbox div[data-baseweb="select"] {
-        color: #2C3E50 !important;
-        -webkit-text-fill-color: #2C3E50 !important; 
-    }
-
-    /* إخفاء القائمة العلوية وعلامة Streamlit المائية لتجربة تطبيق حقيقية */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-
-    /* 🌟 تصميم العنوان الرئيسي */
-    .main-title {
-        text-align: center !important;
-        background: linear-gradient(45deg, #1E88E5, #004D40);
-        -webkit-background-clip: text !important;
-        -webkit-text-fill-color: transparent !important;
-        font-weight: 800;
-        padding-bottom: 20px;
-    }
-
-    /* 🌟 تصميم كروت الإجماليات (Metrics) */
-    div[data-testid="metric-container"] {
-        background: #ffffff !important;
-        border-right: 5px solid #1E88E5;
-        padding: 20px;
-        border-radius: 16px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    div[data-testid="metric-container"]:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
-    }
-    div[data-testid="stMetricValue"], div[data-testid="stMetricValue"] > div {
-        font-size: 2.5rem !important;
-        color: #1E88E5 !important; 
-        font-weight: 800 !important;
-    }
-    div[data-testid="stMetricLabel"], div[data-testid="stMetricLabel"] > div {
-        font-size: 1.1rem !important;
-        color: #7F8C8D !important;
-        font-weight: 600 !important;
-    }
-
-    /* 🌟 تصميم نماذج الإدخال (Forms) */
-    div[data-testid="stForm"] {
-        background: #ffffff !important;
-        border-radius: 20px;
-        padding: 30px 20px;
-        border: none;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.03);
-    }
-
-    /* 🌟 تصميم الأزرار الأساسية (زر الحفظ) */
-    .stButton>button[kind="primary"] {
-        background: linear-gradient(135deg, #1E88E5 0%, #1565C0 100%) !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 10px 0 !important;
-        box-shadow: 0 4px 15px rgba(30, 136, 229, 0.3) !important;
-    }
-    /* إجبار لون النص جوه زرار الحفظ إنه يفضل أبيض */
-    .stButton>button[kind="primary"] p, .stButton>button[kind="primary"] div {
-        color: white !important;
-        font-weight: 700 !important;
-        font-size: 1.1rem !important;
-    }
-
-    /* 🌟 تصميم الأزرار الثانوية (زر الحذف) */
-    .stButton>button[kind="secondary"] {
-        background-color: #FFEBEE !important;
-        border: none !important;
-        border-radius: 10px !important;
-    }
-    .stButton>button[kind="secondary"] p {
-        color: #D32F2F !important;
-    }
-
-    /* 🌟 تصميم كروت السجل (الجدول المخصص) */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: #ffffff !important;
-        border-radius: 16px !important;
-        border: 1px solid #F0F0F0 !important;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.02) !important;
-        padding: 5px;
-        margin-bottom: 10px;
-    }
-    
-    /* تصميم التابات (Tabs) */
-    button[data-baseweb="tab"] div {
-        font-family: 'Cairo', sans-serif !important;
-        font-size: 1.1rem !important;
-        font-weight: 600 !important;
-        color: #2C3E50 !important;
-    }
+    .stApp {{ font-family: 'Cairo', sans-serif !important; direction: rtl; background-color: {bg_color} !important; }}
+    p, h1, h2, h3, h4, h5, h6, label, div[data-testid="stMarkdownContainer"] {{ color: {text_color} !important; text-align: right !important; }}
+    input, .stSelectbox div[data-baseweb="select"] {{ color: {text_color} !important; -webkit-text-fill-color: {text_color} !important; background-color: {card_bg} !important; }}
+    #MainMenu, footer, header {{visibility: hidden;}}
+    .main-title {{ text-align: center !important; background: linear-gradient(45deg, #1E88E5, #004D40); -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important; font-weight: 800; padding-bottom: 20px; }}
+    div[data-testid="metric-container"] {{ background: {card_bg} !important; border-right: 5px solid {highlight}; padding: 20px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); }}
+    div[data-testid="stMetricValue"] > div {{ color: {highlight} !important; font-weight: 800 !important; }}
+    div[data-testid="stForm"] {{ background: {card_bg} !important; border-radius: 20px; border: none; box-shadow: 0 8px 25px rgba(0, 0, 0, 0.03); }}
+    div[data-testid="stVerticalBlockBorderWrapper"] {{ background: {card_bg} !important; border-radius: 16px !important; border: 1px solid {border_col} !important; }}
+    .stButton>button[kind="primary"] {{ background: linear-gradient(135deg, #1E88E5 0%, #1565C0 100%) !important; border: none !important; border-radius: 12px !important; padding: 10px 0 !important; box-shadow: 0 4px 15px rgba(30, 136, 229, 0.3) !important; }}
+    .stButton>button[kind="primary"] p, .stButton>button[kind="primary"] div {{ color: white !important; font-weight: 700 !important; font-size: 1.1rem !important; }}
+    .stButton>button[kind="secondary"] {{ background-color: {'#3B2020' if is_dark_final else '#FFEBEE'} !important; border: none !important; border-radius: 10px !important; }}
+    .stButton>button[kind="secondary"] p {{ color: {danger} !important; }}
+    button[data-baseweb="tab"] div {{ font-family: 'Cairo', sans-serif !important; font-size: 1.1rem !important; font-weight: 600 !important; color: {text_color} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -138,10 +64,10 @@ scopes = [
 
 try:
     try:
-        # المحاولة الأولى: لو شغال من اللاب توب (بيدور على الملف)
+        # المحاولة الأولى: اللاب توب
         creds = Credentials.from_service_account_file("secrets.json", scopes=scopes)
     except FileNotFoundError:
-        # المحاولة الثانية: لو شغال من الإنترنت (بياخد المفتاح من الخزنة السرية)
+        # المحاولة الثانية: الإنترنت
         creds_dict = json.loads(st.secrets["gcp_keys"])
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         
@@ -150,7 +76,7 @@ try:
     income_sheet = sheet.worksheet("income")
     expenses_sheet = sheet.worksheet("expenses")
 except Exception as e:
-    st.error(f"⚠️ خطأ في الاتصال بجوجل شيت! تأكد إن ملف 'secrets.json' موجود، أو إنك حطيت المفتاح في الخزنة السرية. التفاصيل: {e}")
+    st.error(f"⚠️ خطأ في الاتصال بجوجل شيت! التفاصيل: {e}")
     st.stop()
 
 # جلب البيانات من الشيت
@@ -243,7 +169,7 @@ with tab2:
             elif i_amount is None or i_amount <= 0:
                 st.error("⚠️ يرجى إدخال مبلغ صحيح أكبر من الصفر!")
             else:
-                # الحفظ بدون ID (الترتيب: name, type, amount, notes, date)
+                # الترتيب: name, type, amount, notes, date
                 income_sheet.append_row([i_name, i_type, float(i_amount), i_notes, str(i_date)])
                 st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
@@ -252,7 +178,7 @@ with tab2:
     st.markdown("### 📋 سجل الإيرادات")
     
     if incomes:
-        # استخدام enumerate لحفظ رقم الصف الأصلي للحذف (الصف في الشيت = index + 2)
+        # استخدام enumerate عشان نحفظ رقم الصف الحقيقي للحذف (الصف في الشيت = index + 2)
         for i, inc in reversed(list(enumerate(incomes))):
             inc_date = inc.get('date', '-')
             with st.container(border=True):
@@ -266,7 +192,6 @@ with tab2:
                 with col2:
                     st.write("")
                     st.write("")
-                    # زرار الحذف بيعتمد على رقم الـ index
                     if st.button("🗑️", key=f"del_inc_{i}", help="حذف", type="secondary"):
                         income_sheet.delete_rows(i + 2)
                         st.rerun()
@@ -298,7 +223,7 @@ with tab3:
             elif not e_buyer or e_buyer.strip() == "":
                 st.error("⚠️ يرجى إدخال اسم المسؤول عن الشراء!")
             else:
-                # الحفظ بدون ID (الترتيب: date, category, amount, buyer, notes)
+                # الترتيب: date, category, amount, buyer, notes
                 expenses_sheet.append_row([str(e_date), e_category, float(e_amount), e_buyer, e_notes])
                 st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
