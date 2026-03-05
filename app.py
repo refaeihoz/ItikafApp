@@ -264,11 +264,11 @@ with tab2:
             with st.container(border=True):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                  st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>👤 {inc[1]}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>{inc[2]} • 📅 {inc_date}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #1E88E5; font-size: 1.4em; font-weight: 800;'>{inc[3]:.2f} ₺</span>", unsafe_allow_html=True)
-                    if inc[4]:
-                        st.caption(f"📝 {inc[4]}")
+                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>👤 {inc.get('name','')}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>{inc.get('type','')} • 📅 {inc_date}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #1E88E5; font-size: 1.4em; font-weight: 800;'>{safe_float(inc.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
+                    if inc.get('notes'):
+                        st.caption(f"📝 {inc['notes']}")
                 with col2:
                     st.write("")
                     st.write("")
