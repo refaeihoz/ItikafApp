@@ -258,10 +258,29 @@ with tab2:
                 with col2:
                     st.write("")
                     st.write("")
+                    # === كود الحذف الجديد المربوط بجوجل شيت ===
                     if st.button("🗑️", key=f"del_inc_{inc[0]}", help="حذف", type="secondary"):
+                        # 1. الحذف من جوجل شيت أولاً
+                        if gsheet_doc:
+                            try:
+                                income_sheet = gsheet_doc.worksheet("Income")
+                                records = income_sheet.get_all_values()
+                                for i, row in enumerate(records):
+                                    try:
+                                        # مطابقة الاسم والمبلغ والتاريخ لضمان حذف الصف الصحيح
+                                        if len(row) >= 4 and row[1] == str(inc[1]) and float(row[3]) == float(inc[3]) and row[0] == str(inc_date):
+                                            income_sheet.delete_rows(i + 1)
+                                            break # يحذف صف واحد فقط ويخرج
+                                    except ValueError:
+                                        continue # لتخطي صف العناوين (Headers)
+                            except Exception as e:
+                                st.warning(f"تعذر الحذف من الشيت: {e}")
+                        
+                        # 2. الحذف من القاعدة المحلية
                         c.execute("DELETE FROM income WHERE id=?", (inc[0],))
                         conn.commit()
                         st.rerun()
+                    # ==========================================
     else:
         st.info("لا توجد إيرادات مسجلة حتى الآن.")
 
