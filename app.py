@@ -248,6 +248,8 @@ with tab2:
             elif i_amount is None or i_amount <= 0:
                 st.error("⚠️ يرجى إدخال مبلغ صحيح أكبر من الصفر!")
             else:
+                c.execute("INSERT INTO income (name, type, amount, notes, date) VALUES (?, ?, ?, ?, ?)", (i_name, i_type, i_amount, i_notes, i_date))
+                conn.commit()
                 # الحفظ في جوجل شيت
                 income_sheet.append_row([i_name, i_type, float(i_amount), i_notes, str(i_date)])
                 get_data.clear() # 🟢 مسح الكاش عشان البرنامج يقرأ الداتا الجديدة فوراً
