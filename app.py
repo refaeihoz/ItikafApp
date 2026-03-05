@@ -49,8 +49,8 @@ st.markdown("""
         text-align: right !important;
     }
     input, .stSelectbox div[data-baseweb="select"] {
-        color: #2C3E50 !important;
-        -webkit-text-fill-color: #2C3E50 !important; 
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important; 
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
