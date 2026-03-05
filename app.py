@@ -32,10 +32,10 @@ st.markdown("""
     /* إجبار مربعات الإدخال إن الكلام جواها يكون غامق ومقروء */
     input, .stSelectbox div[data-baseweb="select"] {
         color: #2C3E50 !important;
-        -webkit-text-fill-color: #2C3E50 !important; /* لمقاطعة إعدادات متصفح الموبايل */
+        -webkit-text-fill-color: #2C3E50 !important; 
     }
 
-    /* إخفاء القائمة العلوية وعلامة Streamlit المائية لتجربة تطبيق حقيقية */
+    /* إخفاء القائمة العلوية وعلامة Streamlit المائية */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -65,7 +65,7 @@ st.markdown("""
     }
     div[data-testid="stMetricValue"], div[data-testid="stMetricValue"] > div {
         font-size: 2.5rem !important;
-        color: #1E88E5 !important; /* لون الإجماليات أزرق واضح */
+        color: #1E88E5 !important; 
         font-weight: 800 !important;
     }
     div[data-testid="stMetricLabel"], div[data-testid="stMetricLabel"] > div {
@@ -91,7 +91,6 @@ st.markdown("""
         padding: 10px 0 !important;
         box-shadow: 0 4px 15px rgba(30, 136, 229, 0.3) !important;
     }
-    /* إجبار لون النص جوه زرار الحفظ إنه يفضل أبيض */
     .stButton>button[kind="primary"] p, .stButton>button[kind="primary"] div {
         color: white !important;
         font-weight: 700 !important;
@@ -129,14 +128,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔗 الاتصال بقاعدة بيانات Google Sheets
+# 🔗 الاتصال الذكي بقاعدة بيانات Google Sheets (كاش لحل مشكلة الـ Quota)
 # ==========================================
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-try:
+@st.cache_resource
+def init_connection():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     try:
         # المحاولة الأولى: من اللاب توب
         creds = Credentials.from_service_account_file("secrets.json", scopes=scopes)
@@ -147,15 +146,20 @@ try:
         
     client = gspread.authorize(creds)
     sheet = client.open("itikaf_db")
-    income_sheet = sheet.worksheet("income")
-    expenses_sheet = sheet.worksheet("expenses")
+    return sheet.worksheet("income"), sheet.worksheet("expenses")
+
+try:
+    income_sheet, expenses_sheet = init_connection()
 except Exception as e:
     st.error(f"⚠️ خطأ في الاتصال بجوجل شيت! التفاصيل: {e}")
     st.stop()
 
-# جلب البيانات من الشيت
-incomes = income_sheet.get_all_records()
-expenses = expenses_sheet.get_all_records()
+# 🟢 استخدام الكاش لتخزين البيانات وعدم إرهاق سيرفر جوجل
+@st.cache_data(ttl=60) # تحديث تلقائي كل 60 ثانية
+def get_data():
+    return income_sheet.get_all_records(), expenses_sheet.get_all_records()
+
+incomes, expenses = get_data()
 
 # دالة آمنة لتحويل النصوص لأرقام
 def safe_float(val):
@@ -244,8 +248,9 @@ with tab2:
             elif i_amount is None or i_amount <= 0:
                 st.error("⚠️ يرجى إدخال مبلغ صحيح أكبر من الصفر!")
             else:
-                # الحفظ في جوجل شيت (الأعمدة: name, type, amount, notes, date)
+                # الحفظ في جوجل شيت
                 income_sheet.append_row([i_name, i_type, float(i_amount), i_notes, str(i_date)])
+                get_data.clear() # 🟢 مسح الكاش عشان البرنامج يقرأ الداتا الجديدة فوراً
                 st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
             
@@ -268,8 +273,9 @@ with tab2:
                     st.write("")
                     st.write("")
                     if st.button("🗑️", key=f"del_inc_{i}", help="حذف", type="secondary"):
-                        # الحذف برقم الصف مباشرة بدون الحاجة لـ id
+                        # الحذف برقم الصف
                         income_sheet.delete_rows(i + 2)
+                        get_data.clear() # 🟢 مسح الكاش
                         st.rerun()
     else:
         st.info("لا توجد إيرادات مسجلة حتى الآن.")
@@ -299,8 +305,9 @@ with tab3:
             elif not e_buyer or e_buyer.strip() == "":
                 st.error("⚠️ يرجى إدخال اسم المسؤول عن الشراء!")
             else:
-                # الحفظ في جوجل شيت (الأعمدة: date, category, amount, buyer, notes)
+                # الحفظ في جوجل شيت
                 expenses_sheet.append_row([str(e_date), e_category, float(e_amount), e_buyer, e_notes])
+                get_data.clear() # 🟢 مسح الكاش
                 st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
 
@@ -322,6 +329,7 @@ with tab3:
                     st.write("")
                     if st.button("🗑️", key=f"del_exp_{i}", help="حذف", type="secondary"):
                         expenses_sheet.delete_rows(i + 2)
+                        get_data.clear() # 🟢 مسح الكاش
                         st.rerun()
     else:
         st.info("لا توجد مصروفات مسجلة حتى الآن.")
