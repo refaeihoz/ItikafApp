@@ -1,46 +1,60 @@
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
-import json
+import sqlite3
 from datetime import date
 import streamlit.components.v1 as components
+import gspread
+from google.oauth2.service_account import Credentials
 
 # إعداد صفحة البرنامج (يجب أن يكون أول سطر)
 st.set_page_config(page_title="حسابات الاعتكاف", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 🎨 كود CSS السحري للـ UI/UX الفخم (كما هو من كودك)
+# 🌐 الاتصال بـ Google Sheets
+# ==========================================
+@st.cache_resource
+def init_gsheets():
+    try:
+        # تحديد الصلاحيات المطلوبة
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        # جلب بيانات الاعتماد من Streamlit Secrets
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"], scopes=scopes
+        )
+        client = gspread.authorize(creds)
+        # فتح الشيت باستخدام الرابط
+        sheet = client.open_by_url(st.secrets["sheet_url"])
+        return sheet
+    except Exception as e:
+        st.warning(f"⚠️ تعذر الاتصال بجوجل شيت. تأكد من إعدادات الـ Secrets. الخطأ: {e}")
+        return None
+
+gsheet_doc = init_gsheets()
+
+# ==========================================
+# 🎨 كود CSS السحري للـ UI/UX الفخم 
 # ==========================================
 st.markdown("""
     <style>
-    /* استيراد خط "القاهرة" الفخم من جوجل */
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-
-    /* تطبيق الخط والاتجاه على كل البرنامج وفرض لون الخلفية */
     .stApp {
         font-family: 'Cairo', sans-serif !important;
         direction: rtl;
         background-color: #F4F7F6 !important;
     }
-    
-    /* 🚨 حل مشكلة الوضع الليلي: إجبار كل النصوص على اللون الغامق */
     p, h1, h2, h3, h4, h5, h6, label, div[data-testid="stMarkdownContainer"] {
         color: #2C3E50 !important;
         text-align: right !important;
     }
-
-    /* إجبار مربعات الإدخال إن الكلام جواها يكون غامق ومقروء */
     input, .stSelectbox div[data-baseweb="select"] {
         color: #2C3E50 !important;
         -webkit-text-fill-color: #2C3E50 !important; 
     }
-
-    /* إخفاء القائمة العلوية وعلامة Streamlit المائية */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-
-    /* 🌟 تصميم العنوان الرئيسي */
     .main-title {
         text-align: center !important;
         background: linear-gradient(45deg, #1E88E5, #004D40);
@@ -49,8 +63,6 @@ st.markdown("""
         font-weight: 800;
         padding-bottom: 20px;
     }
-
-    /* 🌟 تصميم كروت الإجماليات (Metrics) */
     div[data-testid="metric-container"] {
         background: #ffffff !important;
         border-right: 5px solid #1E88E5;
@@ -65,7 +77,7 @@ st.markdown("""
     }
     div[data-testid="stMetricValue"], div[data-testid="stMetricValue"] > div {
         font-size: 2.5rem !important;
-        color: #1E88E5 !important; 
+        color: #1E88E5 !important;
         font-weight: 800 !important;
     }
     div[data-testid="stMetricLabel"], div[data-testid="stMetricLabel"] > div {
@@ -73,8 +85,6 @@ st.markdown("""
         color: #7F8C8D !important;
         font-weight: 600 !important;
     }
-
-    /* 🌟 تصميم نماذج الإدخال (Forms) */
     div[data-testid="stForm"] {
         background: #ffffff !important;
         border-radius: 20px;
@@ -82,8 +92,6 @@ st.markdown("""
         border: none;
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.03);
     }
-
-    /* 🌟 تصميم الأزرار الأساسية (زر الحفظ) */
     .stButton>button[kind="primary"] {
         background: linear-gradient(135deg, #1E88E5 0%, #1565C0 100%) !important;
         border: none !important;
@@ -96,8 +104,6 @@ st.markdown("""
         font-weight: 700 !important;
         font-size: 1.1rem !important;
     }
-
-    /* 🌟 تصميم الأزرار الثانوية (زر الحذف) */
     .stButton>button[kind="secondary"] {
         background-color: #FFEBEE !important;
         border: none !important;
@@ -106,8 +112,6 @@ st.markdown("""
     .stButton>button[kind="secondary"] p {
         color: #D32F2F !important;
     }
-
-    /* 🌟 تصميم كروت السجل (الجدول المخصص) */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: #ffffff !important;
         border-radius: 16px !important;
@@ -116,8 +120,6 @@ st.markdown("""
         padding: 5px;
         margin-bottom: 10px;
     }
-    
-    /* تصميم التابات (Tabs) */
     button[data-baseweb="tab"] div {
         font-family: 'Cairo', sans-serif !important;
         font-size: 1.1rem !important;
@@ -128,49 +130,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔗 الاتصال الذكي بقاعدة بيانات Google Sheets (كاش لحل مشكلة الـ Quota)
+# إعداد قاعدة البيانات المحلية SQLite
 # ==========================================
-@st.cache_resource
-def init_connection():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    try:
-        # المحاولة الأولى: من اللاب توب
-        creds = Credentials.from_service_account_file("secrets.json", scopes=scopes)
-    except FileNotFoundError:
-        # المحاولة الثانية: من الإنترنت (Streamlit Secrets)
-        creds_dict = json.loads(st.secrets["gcp_keys"])
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        
-    client = gspread.authorize(creds)
-    sheet = client.open("itikaf_db")
-    return sheet.worksheet("income"), sheet.worksheet("expenses")
+conn = sqlite3.connect('itikaf.db', check_same_thread=False)
+c = conn.cursor()
 
-try:
-    income_sheet, expenses_sheet = init_connection()
-except Exception as e:
-    st.error(f"⚠️ خطأ في الاتصال بجوجل شيت! التفاصيل: {e}")
-    st.stop()
+c.execute('''CREATE TABLE IF NOT EXISTS income (id INTEGER PRIMARY KEY, name TEXT, type TEXT, amount REAL, notes TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, date TEXT, category TEXT, amount REAL, buyer TEXT, notes TEXT)''')
 
-# 🟢 استخدام الكاش لتخزين البيانات وعدم إرهاق سيرفر جوجل
-@st.cache_data(ttl=60) # تحديث تلقائي كل 60 ثانية
-def get_data():
-    return income_sheet.get_all_records(), expenses_sheet.get_all_records()
+c.execute("PRAGMA table_info(income)")
+columns = [column[1] for column in c.fetchall()]
+if 'date' not in columns:
+    c.execute("ALTER TABLE income ADD COLUMN date TEXT")
+    today_str = date.today().strftime("%Y-%m-%d")
+    c.execute("UPDATE income SET date = ?", (today_str,))
+conn.commit()
 
-incomes, expenses = get_data()
+c.execute("SELECT SUM(amount) FROM income")
+total_income = c.fetchone()[0] or 0.0
 
-# دالة آمنة لتحويل النصوص لأرقام
-def safe_float(val):
-    try:
-        return float(str(val).replace(',', ''))
-    except:
-        return 0.0
-
-# حساب الإجماليات
-total_income = sum(safe_float(row.get('amount', 0)) for row in incomes)
-total_expenses = sum(safe_float(row.get('amount', 0)) for row in expenses)
+c.execute("SELECT SUM(amount) FROM expenses")
+total_expenses = c.fetchone()[0] or 0.0
 
 balance = total_income - total_expenses
 treasury = balance if balance > 0 else 0.0
@@ -196,17 +176,11 @@ with tab1:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📊 تحليل المصروفات")
     
-    # تجميع بيانات المصروفات للرسم البياني
-    cat_totals = {}
-    for exp in expenses:
-        cat = exp.get('category', 'غير محدد')
-        amt = safe_float(exp.get('amount', 0))
-        cat_totals[cat] = cat_totals.get(cat, 0) + amt
-        
-    chart_data = [(cat, amt) for cat, amt in cat_totals.items() if amt > 0]
+    c.execute("SELECT category, SUM(amount) FROM expenses GROUP BY category")
+    chart_data = c.fetchall()
     
     if chart_data:
-        max_amount = max([amt for cat, amt in chart_data])
+        max_amount = max([row[1] for row in chart_data])
         for category, amount in chart_data:
             percentage = (amount / max_amount) * 100 if max_amount > 0 else 0
             st.markdown(f"""
@@ -248,34 +222,45 @@ with tab2:
             elif i_amount is None or i_amount <= 0:
                 st.error("⚠️ يرجى إدخال مبلغ صحيح أكبر من الصفر!")
             else:
-                # الحفظ في جوجل شيت
-                income_sheet.append_row([i_name, i_type, float(i_amount), i_notes, str(i_date)])
-                get_data.clear() # 🟢 مسح الكاش عشان البرنامج يقرأ الداتا الجديدة فوراً
+                # 1. الحفظ في SQLite
+                c.execute("INSERT INTO income (name, type, amount, notes, date) VALUES (?, ?, ?, ?, ?)", (i_name, i_type, i_amount, i_notes, i_date))
+                conn.commit()
+                
+                # 2. الحفظ في Google Sheets
+                if gsheet_doc:
+                    try:
+                        income_sheet = gsheet_doc.worksheet("Income")
+                        # تحويل التاريخ إلى نص قبل إرساله
+                        income_sheet.append_row([i_date.strftime("%Y-%m-%d"), i_name, i_type, float(i_amount), i_notes])
+                    except Exception as e:
+                        st.warning(f"تم الحفظ محلياً، ولكن حدث خطأ أثناء المزامنة مع جوجل شيت: {e}")
+                
                 st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
             
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📋 سجل الإيرادات")
     
+    c.execute("SELECT * FROM income ORDER BY id DESC")
+    incomes = c.fetchall()
+    
     if incomes:
-        # استخدام enumerate لحفظ رقم الصف الحقيقي للحذف (الصف في الشيت = index + 2)
-        for i, inc in reversed(list(enumerate(incomes))):
-            inc_date = inc.get('date', '-')
+        for inc in incomes:
+            inc_date = inc[5] if len(inc) > 5 and inc[5] else "-"
             with st.container(border=True):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>👤 {inc.get('name','')}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>{inc.get('type','')} • 📅 {inc_date}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #1E88E5; font-size: 1.4em; font-weight: 800;'>{safe_float(inc.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
-                    if inc.get('notes'):
-                        st.caption(f"📝 {inc['notes']}")
+                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>👤 {inc[1]}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>{inc[2]} • 📅 {inc_date}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #1E88E5; font-size: 1.4em; font-weight: 800;'>{inc[3]:.2f} ₺</span>", unsafe_allow_html=True)
+                    if inc[4]:
+                        st.caption(f"📝 {inc[4]}")
                 with col2:
                     st.write("")
                     st.write("")
-                    if st.button("🗑️", key=f"del_inc_{i}", help="حذف", type="secondary"):
-                        # الحذف برقم الصف
-                        income_sheet.delete_rows(i + 2)
-                        get_data.clear() # 🟢 مسح الكاش
+                    if st.button("🗑️", key=f"del_inc_{inc[0]}", help="حذف", type="secondary"):
+                        c.execute("DELETE FROM income WHERE id=?", (inc[0],))
+                        conn.commit()
                         st.rerun()
     else:
         st.info("لا توجد إيرادات مسجلة حتى الآن.")
@@ -305,31 +290,43 @@ with tab3:
             elif not e_buyer or e_buyer.strip() == "":
                 st.error("⚠️ يرجى إدخال اسم المسؤول عن الشراء!")
             else:
-                # الحفظ في جوجل شيت
-                expenses_sheet.append_row([str(e_date), e_category, float(e_amount), e_buyer, e_notes])
-                get_data.clear() # 🟢 مسح الكاش
+                # 1. الحفظ في SQLite
+                c.execute("INSERT INTO expenses (date, category, amount, buyer, notes) VALUES (?, ?, ?, ?, ?)", (e_date, e_category, e_amount, e_buyer, e_notes))
+                conn.commit()
+                
+                # 2. الحفظ في Google Sheets
+                if gsheet_doc:
+                    try:
+                        expense_sheet = gsheet_doc.worksheet("Expenses")
+                        expense_sheet.append_row([e_date.strftime("%Y-%m-%d"), e_category, float(e_amount), e_buyer, e_notes])
+                    except Exception as e:
+                        st.warning(f"تم الحفظ محلياً، ولكن حدث خطأ أثناء المزامنة مع جوجل شيت: {e}")
+                
                 st.success("🎉 تم الحفظ بنجاح!")
                 st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📋 سجل المصروفات")
     
+    c.execute("SELECT * FROM expenses ORDER BY id DESC")
+    expenses = c.fetchall()
+    
     if expenses:
-        for i, exp in reversed(list(enumerate(expenses))):
+        for exp in expenses:
             with st.container(border=True):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>🏷️ {exp.get('category','')}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>📅 {exp.get('date','')} • 👤 {exp.get('buyer','')}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #E53935; font-size: 1.4em; font-weight: 800;'>{safe_float(exp.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
-                    if exp.get('notes'):
-                        st.caption(f"📝 {exp['notes']}")
+                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>🏷️ {exp[2]}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>📅 {exp[1]} • 👤 {exp[4]}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #E53935; font-size: 1.4em; font-weight: 800;'>{exp[3]:.2f} ₺</span>", unsafe_allow_html=True)
+                    if exp[5]:
+                        st.caption(f"📝 {exp[5]}")
                 with col2:
                     st.write("")
                     st.write("")
-                    if st.button("🗑️", key=f"del_exp_{i}", help="حذف", type="secondary"):
-                        expenses_sheet.delete_rows(i + 2)
-                        get_data.clear() # 🟢 مسح الكاش
+                    if st.button("🗑️", key=f"del_exp_{exp[0]}", help="حذف", type="secondary"):
+                        c.execute("DELETE FROM expenses WHERE id=?", (exp[0],))
+                        conn.commit()
                         st.rerun()
     else:
         st.info("لا توجد مصروفات مسجلة حتى الآن.")
