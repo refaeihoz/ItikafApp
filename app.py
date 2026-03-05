@@ -1,5 +1,7 @@
 import streamlit as st
-import sqlite3
+import gspread
+from google.oauth2.service_account import Credentials
+import json
 from datetime import date
 import streamlit.components.v1 as components
 
@@ -7,7 +9,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="حسابات الاعتكاف", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 🎨 كود CSS السحري للـ UI/UX الفخم (محدث لحل مشكلة الدارك مود)
+# 🎨 كود CSS السحري للـ UI/UX الفخم 
 # ==========================================
 st.markdown("""
     <style>
@@ -21,7 +23,7 @@ st.markdown("""
         background-color: #F4F7F6 !important;
     }
     
-    /* 🚨 حل مشكلة الوضع الليلي: إجبار كل النصوص على اللون الغامق */
+    /* 🚨 إجبار كل النصوص على اللون الغامق */
     p, h1, h2, h3, h4, h5, h6, label, div[data-testid="stMarkdownContainer"] {
         color: #2C3E50 !important;
         text-align: right !important;
@@ -30,7 +32,7 @@ st.markdown("""
     /* إجبار مربعات الإدخال إن الكلام جواها يكون غامق ومقروء */
     input, .stSelectbox div[data-baseweb="select"] {
         color: #2C3E50 !important;
-        -webkit-text-fill-color: #2C3E50 !important; /* لمقاطعة إعدادات متصفح الموبايل */
+        -webkit-text-fill-color: #2C3E50 !important; 
     }
 
     /* إخفاء القائمة العلوية وعلامة Streamlit المائية لتجربة تطبيق حقيقية */
@@ -63,7 +65,7 @@ st.markdown("""
     }
     div[data-testid="stMetricValue"], div[data-testid="stMetricValue"] > div {
         font-size: 2.5rem !important;
-        color: #1E88E5 !important; /* لون الإجماليات أزرق واضح */
+        color: #1E88E5 !important; 
         font-weight: 800 !important;
     }
     div[data-testid="stMetricLabel"], div[data-testid="stMetricLabel"] > div {
@@ -127,28 +129,41 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# إعداد قاعدة البيانات
+# 🔗 الاتصال بقاعدة بيانات Google Sheets
 # ==========================================
-conn = sqlite3.connect('itikaf.db', check_same_thread=False)
-c = conn.cursor()
+scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 
-c.execute('''CREATE TABLE IF NOT EXISTS income (id INTEGER PRIMARY KEY, name TEXT, type TEXT, amount REAL, notes TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, date TEXT, category TEXT, amount REAL, buyer TEXT, notes TEXT)''')
+try:
+    try:
+        # المحاولة الأولى: لو شغال من اللاب توب (بيدور على الملف)
+        creds = Credentials.from_service_account_file("secrets.json", scopes=scopes)
+    except FileNotFoundError:
+        # المحاولة الثانية: لو شغال من الإنترنت (بياخد المفتاح من الخزنة السرية)
+        creds_dict = json.loads(st.secrets["gcp_keys"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        
+    client = gspread.authorize(creds)
+    sheet = client.open("itikaf_db")
+    income_sheet = sheet.worksheet("income")
+    expenses_sheet = sheet.worksheet("expenses")
+except Exception as e:
+    st.error(f"⚠️ خطأ في الاتصال بجوجل شيت! تأكد إن ملف 'secrets.json' موجود، أو إنك حطيت المفتاح في الخزنة السرية. التفاصيل: {e}")
+    st.stop()
 
-c.execute("PRAGMA table_info(income)")
-columns = [column[1] for column in c.fetchall()]
-if 'date' not in columns:
-    c.execute("ALTER TABLE income ADD COLUMN date TEXT")
-    today_str = date.today().strftime("%Y-%m-%d")
-    c.execute("UPDATE income SET date = ?", (today_str,))
-conn.commit()
+# جلب البيانات من الشيت
+incomes = income_sheet.get_all_records()
+expenses = expenses_sheet.get_all_records()
+
+# دالة مساعدة لجمع الأرقام وتفادي الأخطاء
+def safe_float(val):
+    try:
+        return float(str(val).replace(',', ''))
+    except:
+        return 0.0
 
 # حساب الإجماليات
-c.execute("SELECT SUM(amount) FROM income")
-total_income = c.fetchone()[0] or 0.0
-
-c.execute("SELECT SUM(amount) FROM expenses")
-total_expenses = c.fetchone()[0] or 0.0
+total_income = sum(safe_float(row.get('amount', 0)) for row in incomes)
+total_expenses = sum(safe_float(row.get('amount', 0)) for row in expenses)
 
 balance = total_income - total_expenses
 treasury = balance if balance > 0 else 0.0
@@ -174,11 +189,17 @@ with tab1:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📊 تحليل المصروفات")
     
-    c.execute("SELECT category, SUM(amount) FROM expenses GROUP BY category")
-    chart_data = c.fetchall()
+    # تجميع بيانات المصروفات للرسم البياني
+    cat_totals = {}
+    for exp in expenses:
+        cat = exp.get('category', 'غير محدد')
+        amt = safe_float(exp.get('amount', 0))
+        cat_totals[cat] = cat_totals.get(cat, 0) + amt
+        
+    chart_data = [(cat, amt) for cat, amt in cat_totals.items() if amt > 0]
     
     if chart_data:
-        max_amount = max([row[1] for row in chart_data])
+        max_amount = max([amt for cat, amt in chart_data])
         for category, amount in chart_data:
             percentage = (amount / max_amount) * 100 if max_amount > 0 else 0
             st.markdown(f"""
@@ -220,34 +241,37 @@ with tab2:
             elif i_amount is None or i_amount <= 0:
                 st.error("⚠️ يرجى إدخال مبلغ صحيح أكبر من الصفر!")
             else:
-                c.execute("INSERT INTO income (name, type, amount, notes, date) VALUES (?, ?, ?, ?, ?)", (i_name, i_type, i_amount, i_notes, i_date))
-                conn.commit()
-                st.success("🎉 تم الحفظ بنجاح!")
+                # توليد ID جديد
+                new_id = max([int(r.get('id', 0)) for r in incomes] + [0]) + 1
+                # ترتيب الأعمدة: id, name, type, amount, notes, date
+                income_sheet.append_row([new_id, i_name, i_type, float(i_amount), i_notes, str(i_date)])
+                st.success("🎉 تم الحفظ في جوجل شيت بنجاح!")
                 st.rerun()
             
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📋 سجل الإيرادات")
     
-    c.execute("SELECT * FROM income ORDER BY id DESC")
-    incomes = c.fetchall()
-    
     if incomes:
-        for inc in incomes:
-            inc_date = inc[5] if len(inc) > 5 and inc[5] else "-"
+        # عرض الأحدث أولاً
+        for inc in reversed(incomes):
+            inc_date = inc.get('date', '-')
             with st.container(border=True):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>👤 {inc[1]}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>{inc[2]} • 📅 {inc_date}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #1E88E5; font-size: 1.4em; font-weight: 800;'>{inc[3]:.2f} ₺</span>", unsafe_allow_html=True)
-                    if inc[4]:
-                        st.caption(f"📝 {inc[4]}")
+                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>👤 {inc.get('name','')}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>{inc.get('type','')} • 📅 {inc_date}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #1E88E5; font-size: 1.4em; font-weight: 800;'>{safe_float(inc.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
+                    if inc.get('notes'):
+                        st.caption(f"📝 {inc['notes']}")
                 with col2:
                     st.write("")
                     st.write("")
-                    if st.button("🗑️", key=f"del_inc_{inc[0]}", help="حذف", type="secondary"):
-                        c.execute("DELETE FROM income WHERE id=?", (inc[0],))
-                        conn.commit()
+                    if st.button("🗑️", key=f"del_inc_{inc.get('id')}", help="حذف", type="secondary"):
+                        # البحث عن رقم الصف وحذفه (+2 لأن الصف 1 هو العناوين و+1 للـ index)
+                        for i, r in enumerate(income_sheet.get_all_records()):
+                            if str(r.get('id')) == str(inc.get('id')):
+                                income_sheet.delete_rows(i + 2)
+                                break
                         st.rerun()
     else:
         st.info("لا توجد إيرادات مسجلة حتى الآن.")
@@ -277,33 +301,33 @@ with tab3:
             elif not e_buyer or e_buyer.strip() == "":
                 st.error("⚠️ يرجى إدخال اسم المسؤول عن الشراء!")
             else:
-                c.execute("INSERT INTO expenses (date, category, amount, buyer, notes) VALUES (?, ?, ?, ?, ?)", (e_date, e_category, e_amount, e_buyer, e_notes))
-                conn.commit()
-                st.success("🎉 تم الحفظ بنجاح!")
+                new_id = max([int(r.get('id', 0)) for r in expenses] + [0]) + 1
+                # ترتيب الأعمدة: id, date, category, amount, buyer, notes
+                expenses_sheet.append_row([new_id, str(e_date), e_category, float(e_amount), e_buyer, e_notes])
+                st.success("🎉 تم الحفظ في جوجل شيت بنجاح!")
                 st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📋 سجل المصروفات")
     
-    c.execute("SELECT * FROM expenses ORDER BY id DESC")
-    expenses = c.fetchall()
-    
     if expenses:
-        for exp in expenses:
+        for exp in reversed(expenses):
             with st.container(border=True):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>🏷️ {exp[2]}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>📅 {exp[1]} • 👤 {exp[4]}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color: #E53935; font-size: 1.4em; font-weight: 800;'>{exp[3]:.2f} ₺</span>", unsafe_allow_html=True)
-                    if exp[5]:
-                        st.caption(f"📝 {exp[5]}")
+                    st.markdown(f"<span style='font-size: 1.1rem; font-weight: 700; color: #2C3E50;'>🏷️ {exp.get('category','')}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #7F8C8D; font-size: 0.9em; font-weight: 600;'>📅 {exp.get('date','')} • 👤 {exp.get('buyer','')}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #E53935; font-size: 1.4em; font-weight: 800;'>{safe_float(exp.get('amount',0)):.2f} ₺</span>", unsafe_allow_html=True)
+                    if exp.get('notes'):
+                        st.caption(f"📝 {exp['notes']}")
                 with col2:
                     st.write("")
                     st.write("")
-                    if st.button("🗑️", key=f"del_exp_{exp[0]}", help="حذف", type="secondary"):
-                        c.execute("DELETE FROM expenses WHERE id=?", (exp[0],))
-                        conn.commit()
+                    if st.button("🗑️", key=f"del_exp_{exp.get('id')}", help="حذف", type="secondary"):
+                        for i, r in enumerate(expenses_sheet.get_all_records()):
+                            if str(r.get('id')) == str(exp.get('id')):
+                                expenses_sheet.delete_rows(i + 2)
+                                break
                         st.rerun()
     else:
         st.info("لا توجد مصروفات مسجلة حتى الآن.")
