@@ -161,11 +161,15 @@ col1, col2, col3 = st.columns([1, 4, 1])
 with col2:
     st.markdown("<h1 class='main-title'>🕌 إدارة حسابات الاعتكاف</h1>", unsafe_allow_html=True)
 with col3:
-    st.write("") # لضبط المحاذاة العمودية مع العنوان
+    st.write("") # لضبط المحاذاة العمودية
     if st.button("🔄 تحديث", type="secondary", use_container_width=True):
-        st.cache_resource.clear() # لمسح الكاش لو كان فيه تعليق في الاتصال
-        st.rerun() # لإعادة تحميل الصفحة بالكامل
-st.write("")
+        st.cache_resource.clear()
+        st.rerun()
+
+st.write("") 
+
+# === هذا هو السطر المفقود الذي تسبب في المشكلة ===
+tab1, tab2, tab3 = st.tabs(["📊 الخلاصة والتقارير", "💵 الإيرادات", "🛒 المصروفات"])
 
 # ==========================================
 # صفحة الملخص
