@@ -156,11 +156,16 @@ balance = total_income - total_expenses
 treasury = balance if balance > 0 else 0.0
 debt = abs(balance) if balance < 0 else 0.0
 
-# 🌟 عرض العنوان الفخم
-st.markdown("<h1 class='main-title'>🕌 إدارة حسابات الاعتكاف</h1>", unsafe_allow_html=True)
-st.write("") 
-
-tab1, tab2, tab3 = st.tabs(["📊 الخلاصة والتقارير", "💵 الإيرادات", "🛒 المصروفات"])
+# 🌟 عرض العنوان الفخم مع زر التحديث
+col1, col2, col3 = st.columns([1, 4, 1])
+with col2:
+    st.markdown("<h1 class='main-title'>🕌 إدارة حسابات الاعتكاف</h1>", unsafe_allow_html=True)
+with col3:
+    st.write("") # لضبط المحاذاة العمودية مع العنوان
+    if st.button("🔄 تحديث", type="secondary", use_container_width=True):
+        st.cache_resource.clear() # لمسح الكاش لو كان فيه تعليق في الاتصال
+        st.rerun() # لإعادة تحميل الصفحة بالكامل
+st.write("")
 
 # ==========================================
 # صفحة الملخص
